@@ -1,0 +1,54 @@
+name: Build Sunrise Smart Alarm APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'Gog-Android-Build-Ready.zip'
+      - '.github/workflows/build-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack project archive
+        run: |
+          test -f Gog-Android-Build-Ready.zip
+          mkdir project
+          unzip -q Gog-Android-Build-Ready.zip -d project
+          PROJECT_DIR="$(find project -name pubspec.yaml -printf '%h\n' | head -n 1)"
+          test -n "$PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Generate Android platform files
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter create --platforms=android --org com.example .
+      - name: Apply Android alarm configuration
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: python3 tool/prepare_android.py
+      - name: Resolve packages
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter pub get
+      - name: Run tests
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter test
+      - name: Build release APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sunrise-smart-alarm-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
